@@ -1,0 +1,136 @@
+import cv2
+import os
+import glob
+import csv
+import pandas as pd
+from pandas import DataFrame
+
+
+video = '動画フォルダの絶対パス' + '/'
+capturepics = 'キャプチャー画像保存場所の絶対パス'
+csvpath = 'csvファイル出力場所の絶対パス'
+
+#make csv filename same as video filename videoの名前をCSVの名前につける
+csvname = os.path.basename(os.path.dirname(video))
+
+#convert video to still images 動画を画像に変換
+files = ['動画ファイル名']
+
+#extract stills from video and save them 映像からキャプチャー画像を抽出し、保存する
+for i in files:
+    def save_frame_range(video_path, start_frame, stop_frame, step_frame, output_path, file_name, ext='jpg'):
+        cap = cv2.VideoCapture(video_path+i)
+
+        if not cap.isOpened():
+            return
+
+        os.makedirs(output_path, exist_ok=True)
+        base_path = os.path.join(output_path, file_name)
+
+        digit = len(str(int(cap.get(cv2.CAP_PROP_FRAME_COUNT))))
+
+        for n in range(start_frame, stop_frame, step_frame):
+            cap.set(cv2.CAP_PROP_POS_FRAMES, n)
+            ret, frame = cap.read()
+
+            if ret:
+                cv2.imwrite('{}_{}.{}'.format(base_path, str(n).zfill(digit), ext),frame)
+            else:
+                return
+
+
+    start_time = 2
+    stop_time = 50
+    frame_interval = 30
+    name = os.path.basename(video+i)
+    output_path = capturepics + '/' + name
+
+    save_frame_range(video, start_time*30, stop_time*30, frame_interval, output_path, 'cap')
+
+
+
+#calculate BGRHSV from stills and write to csv file 画像からBGRHSVを計算し、CSVファイルに書き出す
+l = glob.glob(capturepics+'/*')
+
+for x in enumerate(l):
+    m = list(x)
+    n = m.pop(1)
+    o = os.listdir(n)
+    q = os.path.basename(n)
+
+    with open(csvpath + '/' + q + '.csv', 'a') as csv_file:
+        header = ['B', 'G', 'R', 'Hue', 'Saturation', 'Value', 'Luminance']
+        writer = csv.DictWriter(csv_file, fieldnames=header)
+        writer.writeheader()
+
+
+    for y in o:
+        img = cv2.imread(n+'/'+y,cv2.IMREAD_COLOR)
+
+        width, height, _ = img.shape
+
+
+        imgBox = img[0: width, 0: height]
+
+        B = imgBox.T[0].flatten().mean()
+        G = imgBox.T[1].flatten().mean()
+        R = imgBox.T[2].flatten().mean()
+
+
+        imgHSV = cv2.cvtColor(imgBox,cv2.COLOR_RGB2HSV)
+
+        H = imgHSV.T[0].flatten().mean()
+        S = imgHSV.T[1].flatten().mean()
+        V = imgHSV.T[2].flatten().mean()
+
+        L = B*0.114478+G*0.586611+R*0.298912
+
+        with open(csvpath + '/' + q + '.csv', 'a') as csv_file:
+
+            paper = csv.writer(csv_file, delimiter=",", quotechar='"', quoting=csv.QUOTE_NONE)
+            paper.writerow(["%.2f" % (B),"%.2f" % (G),"%.2f" % (R),"%.2f" % (H),"%.2f" % (S),"%.2f" % (V),L])
+
+
+#read csv file, compute averages and save to a different csv file CSVファイルを読み込み、平均値を算出、べつのCSVファイルに保存する
+with open(csvpath + '/' + csvname + '.csv', 'a') as csv_file:
+
+    #define the headers ヘッダーを指定
+    fieldnames = ['File name', 'B', 'G', 'R', 'Hue', 'Saturation', 'Value', 'Luminance']
+    writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
+    writer.writeheader()
+
+
+for x in enumerate(l):
+    m = list(x)
+    n = m.pop(1)
+    q = os.path.basename(n)
+
+
+    df = pd.read_csv(csvpath + '/' + q + '.csv', header=0, encoding='utf-8')
+    #list the values 列の値をリストにする
+
+    data_B = df.B.values.tolist()
+    data_G = df.G.values.tolist()
+    data_R = df.R.values.tolist()
+    data_H = df.Hue.values.tolist()
+    data_S = df.Saturation.values.tolist()
+    data_V = df.Value.values.tolist()
+    data_L = df.Luminance.values.tolist()
+
+    #get averages 平均値を取得
+    average_B = sum(data_B) / len(data_B)
+    average_G = sum(data_G) / len(data_G)
+    average_R = sum(data_R) / len(data_R)
+    average_H = sum(data_H) / len(data_H)
+    average_S = sum(data_S) / len(data_S)
+    average_V = sum(data_V) / len(data_V)
+    average_L = sum(data_L) / len(data_L)
+
+    #write a csv file CSVで出力
+    r = n + '/'
+    s = os.path.basename(os.path.dirname(r))
+    with open(csvpath + '/' + csvname + '.csv', 'a') as csv_file:
+
+        #output values 値を出力
+        paper = csv.writer(csv_file, delimiter=",", quotechar='"', quoting=csv.QUOTE_NONE)
+        paper.writerow([s,"%.2f" % (average_B),"%.2f" % (average_G),"%.2f" % (average_R),"%.2f" % (average_H),"%.2f" % (average_S),"%.2f" % (average_V),"%.2f" % (average_L)])
